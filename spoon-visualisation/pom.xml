@@ -125,6 +125,31 @@
                         -Dprism.order=sw</argLine>
                 </configuration>
             </plugin>
+            <plugin>
+                <!-- see https://github.com/castor-software/depclean -->
+                <groupId>se.kth.castor</groupId>
+                <artifactId>depclean-maven-plugin</artifactId>
+                <version>2.0.1</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>depclean</goal>
+                        </goals>
+                        <configuration>
+                            <ignoreDependencies>
+                                <!-- DepClean should ignore these dependencies (they act as aggregators of others dependencies)-->
+                                <dependency>org.junit.jupiter:junit-jupiter-engine:5.7.1:test</dependency>
+                                <dependency>org.openjfx:javafx-graphics:11.0.2:compile</dependency>
+                                <dependency>org.openjfx:javafx-controls:11.0.2:compile</dependency>
+                                <dependency>org.openjfx:javafx-fxml:11.0.2:compile</dependency>
+                                <dependency>org.openjfx:javafx-base:11.0.2:compile</dependency>
+                            </ignoreDependencies>
+                            <!-- the build fails if there are unused direct dependencies -->
+                            <failIfUnusedDirect>true</failIfUnusedDirect>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 
@@ -132,7 +157,7 @@
         <dependency>
             <groupId>io.github.interacto</groupId>
             <artifactId>interacto-javafx</artifactId>
-            <version>3.4</version>
+            <version>4.3.1</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.openjfx</groupId>
@@ -143,7 +168,7 @@
         <dependency>
             <groupId>fr.inria.gforge.spoon</groupId>
             <artifactId>spoon-core</artifactId>
-            <version>8.3.0</version>
+            <version>9.0.0</version>
             <exclusions>
                     <exclusion>
                         <artifactId>*</artifactId>
@@ -229,18 +254,11 @@
 
     <repositories>
         <repository>
-            <id>mavenInriaSnapshot</id>
-            <name>http://maven.inria.fr-snapshots</name>
-            <url>http://maven.inria.fr/artifactory/malai-public-snapshot</url>
+            <id>spoon-snapshot</id>
+            <name>Maven Repository for Spoon Snapshots</name>
+            <url>https://repository.ow2.org/nexus/content/repositories/snapshots/</url>
             <snapshots><enabled>true</enabled></snapshots>
             <releases><enabled>false</enabled></releases>
-        </repository>
-        <repository>
-            <id>mavenInriaRelease</id>
-            <name>http://maven.inria.fr-releases</name>
-            <url>http://maven.inria.fr/artifactory/malai-public-release</url>
-            <snapshots><enabled>false</enabled></snapshots>
-            <releases><enabled>true</enabled></releases>
         </repository>
     </repositories>
 </project>

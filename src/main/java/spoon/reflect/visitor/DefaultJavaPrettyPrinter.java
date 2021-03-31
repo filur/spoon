@@ -217,6 +217,12 @@ public class DefaultJavaPrettyPrinter implements CtVisitor, PrettyPrinter {
 	 */
 	protected boolean ignoreImplicit = true;
 
+	/**
+	 * EXPERIMENTAL: If true, the printer will attempt to print a minimal set of round brackets in
+	 * expressions while preserving the syntactical structure of the AST.
+	 */
+	private boolean minimizeRoundBrackets = false;
+
 	public boolean inlineElseIf = true;
 
 	/**
@@ -391,6 +397,13 @@ public class DefaultJavaPrettyPrinter implements CtVisitor, PrettyPrinter {
 			return true;
 		}
 		try {
+			if (isMinimizeRoundBrackets()) {
+				RoundBracketAnalyzer.EncloseInRoundBrackets requiresBrackets =
+						RoundBracketAnalyzer.requiresRoundBrackets(e);
+				if (requiresBrackets != RoundBracketAnalyzer.EncloseInRoundBrackets.UNKNOWN) {
+					return requiresBrackets == RoundBracketAnalyzer.EncloseInRoundBrackets.YES;
+				}
+			}
 			if ((e.getParent() instanceof CtBinaryOperator) || (e.getParent() instanceof CtUnaryOperator)) {
 				return (e instanceof CtAssignment) || (e instanceof CtConditional) || (e instanceof CtUnaryOperator) || e instanceof CtBinaryOperator;
 			}
@@ -1301,12 +1314,7 @@ public class DefaultJavaPrettyPrinter implements CtVisitor, PrettyPrinter {
 		if (invocation.getExecutable().isConstructor()) {
 			// It's a constructor (super or this)
 			elementPrinterHelper.writeActualTypeArguments(invocation.getExecutable());
-			CtType<?> parentType;
-			try {
-				parentType = invocation.getParent(CtType.class);
-			} catch (ParentNotInitializedException e) {
-				parentType = null;
-			}
+			CtType<?> parentType = invocation.getParent(CtType.class);
 			if (parentType == null || parentType.getQualifiedName() != null && parentType.getQualifiedName().equals(invocation.getExecutable().getDeclaringType().getQualifiedName())) {
 				printer.writeKeyword("this");
 			} else {
@@ -1460,13 +1468,8 @@ public class DefaultJavaPrettyPrinter implements CtVisitor, PrettyPrinter {
 	@SuppressWarnings("rawtypes")
 	public <T> void visitCtNewArray(CtNewArray<T> newArray) {
 		enterCtExpression(newArray);
-		boolean isNotInAnnotation;
-		try {
-			isNotInAnnotation = (newArray.getParent(CtAnnotationType.class) == null) && (newArray.getParent(CtAnnotation.class) == null);
-		} catch (ParentNotInitializedException e) {
-			isNotInAnnotation = true;
-		}
 
+		boolean isNotInAnnotation = (newArray.getParent(CtAnnotationType.class) == null) && (newArray.getParent(CtAnnotation.class) == null);
 		if (isNotInAnnotation) {
 			CtTypeReference<?> ref = newArray.getType();
 
@@ -2101,7 +2104,10 @@ public class DefaultJavaPrettyPrinter implements CtVisitor, PrettyPrinter {
 	}
 
 	/**
-	 * @param preprocessors list of {@link CompilationUnitValidator}, which have to be used to validate and fix model before it's printing
+	 * Set preprocessors that the printer automatically runs on the model before printing it.
+	 * Typically, such preprocessors validate or adjust the model before printing.
+	 *
+	 * @param preprocessors list of processors to run on the model before printing
 	 */
 	public void setPreprocessors(List<Processor<CtElement>> preprocessors) {
 		this.preprocessors.clear();
@@ -2109,7 +2115,7 @@ public class DefaultJavaPrettyPrinter implements CtVisitor, PrettyPrinter {
 	}
 
 	/**
-	 * @return list of {@link CompilationUnitValidator}, which are used to validate and fix model before it's printing
+	 * @return all processors currently set to run on the model before printing
 	 */
 	public List<Processor<CtElement>> getPreprocessors() {
 		return this.preprocessors;
@@ -2137,4 +2143,29 @@ public class DefaultJavaPrettyPrinter implements CtVisitor, PrettyPrinter {
 		scan(statement.getExpression());
 		exitCtStatement(statement);
 	}
+
+	/**
+	 * @return true if the printer is minimizing the amount of round brackets in expressions
+	 */
+	protected boolean isMinimizeRoundBrackets() {
+		return minimizeRoundBrackets;
+	}
+
+	/**
+	 * When set to true, this activates round bracket minimization for expressions. This means that
+	 * the printer will attempt to only write round brackets strictly necessary for preserving
+	 * syntactical structure (and by extension, semantics).
+     *
+	 * As an example, the expression <code>1 + 2 + 3 + 4</code> is written as
+	 * <code>((1 + 2) + 3) + 4</code> without round bracket minimization, but entirely without
+	 * parentheses when minimization is enabled. However, an expression <code>1 + 2 + (3 + 4)</code>
+	 * is still written as <code>1 + 2 + (3 + 4)</code> to preserve syntactical structure, even though
+	 * the brackets are semantically redundant.
+	 *
+	 * @param minimizeRoundBrackets set whether or not to minimize round brackets in expressions
+	 */
+	protected void setMinimizeRoundBrackets(boolean minimizeRoundBrackets) {
+		this.minimizeRoundBrackets = minimizeRoundBrackets;
+	}
+
 }

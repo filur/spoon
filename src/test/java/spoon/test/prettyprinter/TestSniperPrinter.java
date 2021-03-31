@@ -387,6 +387,102 @@ public class TestSniperPrinter {
 	}
 
 	@Test
+	public void testCalculateCrashesWithInformativeMessageWhenSniperPrinterSetAfterModelBuild() {
+		// contract: The sniper printer must be set before building the model, and the error message
+		// one gets when this has not been done should say so.
+
+		Launcher launcher = new Launcher();
+		launcher.addInputResource(getResourcePath("visibility.YamlRepresenter"));
+
+		// build model, then set sniper
+		launcher.buildModel();
+		launcher.getEnvironment().setPrettyPrinterCreator(
+				() -> new SniperJavaPrettyPrinter(launcher.getEnvironment()));
+
+		CtCompilationUnit cu = launcher.getFactory().CompilationUnit().getMap().values().stream()
+				.findFirst().get();
+
+		// crash because sniper was set after model was built, and so the ChangeCollector was not
+		// attached to the environment
+		try {
+			launcher.createPrettyPrinter().calculate(cu, cu.getDeclaredTypes());
+		} catch (SpoonException e) {
+			assertThat(e.getMessage(), containsString(
+					"This typically means that the Sniper printer was set after building the model."));
+			assertThat(e.getMessage(), containsString(
+					"It must be set before building the model."));
+		}
+	}
+
+	@Test
+	public void testWhitespacePrependedToFieldAddedAtTop() {
+		assumeNotWindows(); // FIXME Make test case pass on Windows
+		// contract: newline and indentation must be inserted before a field that's added to the top
+		// of a class body when the class already has other type members.
+
+		Consumer<CtType<?>> addFieldAtTop = type -> {
+			Factory fact = type.getFactory();
+			CtField<?> field = fact.createCtField(
+					"newFieldAtTop", fact.Type().INTEGER_PRIMITIVE, "2");
+			type.addFieldAtTop(field);
+		};
+
+		final String expectedFieldSource = "int newFieldAtTop = 2;";
+		BiConsumer<CtType<?>, String> assertTopAddedFieldOnSeparateLine = (type, result) ->
+				assertThat(result, containsString("{\n    " + expectedFieldSource));
+
+		// it doesn't matter which test resource is used, as long as it has a non-empty class
+		String nonEmptyClass = "TypeMemberComments";
+		testSniper(nonEmptyClass, addFieldAtTop, assertTopAddedFieldOnSeparateLine);
+	}
+
+	@Test
+	public void testWhitespacePrependedToNestedClassAddedAtTop() {
+		assumeNotWindows(); // FIXME Make test case pass on Windows
+		// contract: newline and indentation must be inserted before a nested class that's added to
+		// the top of a class body when the class already has other type members.
+
+		Consumer<CtType<?>> addNestedClassAtTop = type -> {
+			CtClass<?> nestedClass = type.getFactory().createClass("Nested");
+			type.addTypeMemberAt(0, nestedClass);
+		};
+
+		final String expectedClassSource = "class Nested {}";
+		BiConsumer<CtType<?>, String> assertTopAddedClassOnSeparateLine = (type, result) ->
+				assertThat(result, containsString("{\n    " + expectedClassSource));
+
+		// it doesn't matter which test resource is used, as long as it has a non-empty class
+		String nonEmptyClass = "TypeMemberComments";
+		testSniper(nonEmptyClass, addNestedClassAtTop, assertTopAddedClassOnSeparateLine);
+	}
+
+	@Test
+	public void testWhitespacePrependedToLocalVariableAddAtTopOfNonEmptyMethod() {
+		assumeNotWindows(); // FIXME Make test case pass on Windows
+		// contract: newline and indentation must be inserted before a local variable that's added
+		// to the top of a non-empty statement list.
+
+		Consumer<CtType<?>> addLocalVariableAtTopOfMethod = type -> {
+			Factory factory = type.getFactory();
+			CtMethod<?> method = type.getMethods().stream()
+					.filter(m -> !m.getBody().getStatements().isEmpty())
+					.findFirst()
+					.get();
+			CtLocalVariable<?> localVar = factory.createLocalVariable(
+					factory.Type().INTEGER_PRIMITIVE, "localVar", factory.createCodeSnippetExpression("2"));
+			method.getBody().addStatement(0, localVar);
+		};
+
+		final String expectedVariableSource = "int localVar = 2;";
+		BiConsumer<CtType<?>, String> assertTopAddedVariableOnSeparateLine = (type, result) ->
+				assertThat(result, containsString("{\n        " + expectedVariableSource));
+
+		// the test resource must have a class with a non-empty method
+		String classWithNonEmptyMethod = "methodimport.ClassWithStaticMethod";
+		testSniper(classWithNonEmptyMethod, addLocalVariableAtTopOfMethod, assertTopAddedVariableOnSeparateLine);
+	}
+
+	@Test
 	public void testNewlineInsertedBetweenCommentAndTypeMemberWithAddedModifier() {
 		assumeNotWindows(); // FIXME Make test case pass on Windows
 		// contract: newline must be inserted after comment when a succeeding type member has had a
@@ -578,6 +674,25 @@ public class TestSniperPrinter {
 		testSniper("indentation.NoTypeMembers", addField, (type, result) -> {
 			assertThat(result, containsString("\n\tint z = 3;"));
 		});
+	}
+
+	@Test
+	public void testOptimizesParenthesesForAddedNestedOperators() {
+		// contract: The sniper printer should optimize parentheses for newly inserted elements
+
+		// without parentheses optimization, the expression will be printed as `(1 + 2) + (-(2 + 3))`
+		String declaration = "int a = 1 + 2 + -(2 + 3)";
+		Launcher launcher = new Launcher();
+		CtStatement nestedOps = launcher.getFactory().createCodeSnippetStatement(declaration).compile();
+
+		Consumer<CtType<?>> addNestedOperator = type -> {
+			CtMethod<?> method = type.getMethodsByName("main").get(0);
+			method.getBody().addStatement(nestedOps);
+		};
+		BiConsumer<CtType<?>, String> assertCorrectlyPrinted =
+				(type, result) -> assertThat(result, containsString(declaration));
+
+		testSniper("methodimport.ClassWithStaticMethod", addNestedOperator, assertCorrectlyPrinted);
 	}
 
 	@Test

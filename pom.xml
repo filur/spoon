@@ -18,7 +18,7 @@
 
   <artifactId>spoon-core</artifactId>
   <packaging>jar</packaging>
-  <version>8.4.0-SNAPSHOT</version>
+  <version>9.1.0-SNAPSHOT</version>
   <name>Spoon Core</name>
   <description>Spoon is a tool for meta-programming, analysis and transformation of Java programs.</description>
   <url>http://spoon.gforge.inria.fr/</url>
@@ -31,19 +31,19 @@
           <distribution>repo</distribution>
       </license>
   </licenses>
-  
+
   <properties>
     <java.src.version>1.8</java.src.version>
     <sonar.coverage.exclusions>
         **/support/gui/*
     </sonar.coverage.exclusions>
-  </properties> 
+  </properties>
 
   <dependencies>
     <dependency>
       <groupId>org.eclipse.jdt</groupId>
       <artifactId>org.eclipse.jdt.core</artifactId>
-      <version>3.24.0</version>
+      <version>3.25.0</version>
       <exclusions>
         <exclusion>
           <groupId>org.eclipse.platform</groupId>
@@ -87,18 +87,19 @@
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-lang3</artifactId>
-      <version>3.11</version>
+      <version>3.12.0</version>
     </dependency>
   <!-- https://mvnrepository.com/artifact/org.tukaani/xz -->
 	<dependency>
     	<groupId>org.tukaani</groupId>
     	<artifactId>xz</artifactId>
-    	<version>1.8</version>
+    	<version>1.9</version>
+        <scope>test</scope>
 	</dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
-      <version>2.12.1</version>
+      <version>2.12.2</version>
     </dependency>
     <dependency>
       <!-- support for compressed serialized ASTs -->
@@ -110,7 +111,7 @@
       <!-- to reproduce JTD error with nullable annotation -->
       <groupId>com.google.guava</groupId>
       <artifactId>guava</artifactId>
-      <version>30.1-jre</version>
+      <version>30.1.1-jre</version>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -186,7 +187,7 @@
                     </goals>
                 </execution>
                 <execution>
-                  <!-- reference: 
+                  <!-- reference:
                   * https://www.jacoco.org/jacoco/trunk/doc/check-mojo.html
                   * https://stackoverflow.com/questions/41891739/how-to-fail-a-maven-build-if-junit-coverage-falls-below-certain-threshold
                   -->
@@ -199,7 +200,7 @@
                     <rule implementation="org.jacoco.maven.RuleConfiguration">
                       <element>CLASS</element>
                       <excludes>
-                        <!-- we exclude the GUI classes, because we don't have Swing GUI tests in CI --> 
+                        <!-- we exclude the GUI classes, because we don't have Swing GUI tests in CI -->
                         <exclude>spoon.support.gui.*</exclude>
                         <!-- we exclude the generated inner classes of ReplacementVisitor -->
                         <exclude>spoon.support.visitor.replace.ReplacementVisitor.*</exclude>
@@ -279,6 +280,24 @@
             <classpathDependencyExclude>ch.qos.logback:logback-classic</classpathDependencyExclude>
           </classpathDependencyExcludes>
         </configuration>
+      </plugin>
+
+      <plugin>
+        <!-- see https://github.com/castor-software/depclean -->
+        <groupId>se.kth.castor</groupId>
+        <artifactId>depclean-maven-plugin</artifactId>
+        <version>2.0.1</version>
+        <executions>
+          <execution>
+              <goals>
+                <goal>depclean</goal>
+              </goals>
+             <configuration>
+               <!-- the build fails if there are unused direct dependencies -->
+               <failIfUnusedDirect>true</failIfUnusedDirect>
+             </configuration>
+           </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

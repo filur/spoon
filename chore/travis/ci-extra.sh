@@ -4,7 +4,7 @@
 # it runs verify and site maven goals
 # and to check documentation links
 #
-# It also run test, verify and checkstyle goals on spoon-decompiler
+# It also run test, verify, checkstyle, and depclean goals on spoon-decompiler
 
 # fails if anything fails
 set -e
@@ -22,6 +22,10 @@ mvn -q  checkstyle:checkstyle -Pcheckstyle-test
 
 python ./chore/check-links-in-doc.py
 
+# Analyze the usage of dependencies through DepClean in spoon-core.
+# The build fails if DepClean detects at least one unused direct dependency.
+mvn -q depclean:depclean
+
 ##################################################################
 # Spoon-decompiler
 ##################################################################
@@ -33,6 +37,7 @@ git diff
 
 mvn -q test
 mvn -q checkstyle:checkstyle license:check
+mvn -q depclean:depclean
 
 ##################################################################
 # Spoon-control-flow
@@ -74,6 +79,20 @@ mvn -q versions:use-latest-versions -DallowSnapshots=true -Dincludes=fr.inria.gf
 git diff
 
 mvn -q -Djava.src.version=11 test
+mvn -q depclean:depclean
+
+##################################################################
+# Spoon-smpl
+##################################################################
+cd ../spoon-smpl
+
+# always depends on the latest snapshot, just installed with "mvn install" above
+mvn -q versions:use-latest-versions -DallowSnapshots=true -Dincludes=fr.inria.gforge.spoon
+git diff
+
+mvn -q -Djava.src.version=11 test
+mvn -q checkstyle:checkstyle license:check
+mvn -q depclean:depclean
 
 ##################################################################
 # Spoon-smpl

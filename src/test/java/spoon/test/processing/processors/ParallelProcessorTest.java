@@ -7,6 +7,8 @@
  */
 package spoon.test.processing.processors;
 
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -15,6 +17,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.stream.IntStream;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -77,14 +80,9 @@ public class ParallelProcessorTest {
 			}
 		}).noClasspath(true).outputDirectory(folderFactory.newFolder()).buildModel();
 
-		// after processing both |singleThreadCounter| == sum(|atomicCounter|) must be
-		// true.
-		// for checking this subtract each array value from the
-		// singleThreadCounter and check for == 0
-		for (int j = 0; j < atomicCounter.length(); j++) {
-			singleThreadCounter.set(singleThreadCounter.get() - atomicCounter.get(j));
-		}
-		assertTrue(singleThreadCounter.get() == 0);
+		int sequentialCount = singleThreadCounter.get();
+		int parallelCount = IntStream.range(0, atomicCounter.length()).map(atomicCounter::get).sum();
+		assertThat(parallelCount, equalTo(sequentialCount));
 	}
 
 	@Test
@@ -108,8 +106,8 @@ public class ParallelProcessorTest {
 				singleThreadCounter.incrementAndGet();
 			}
 		}).noClasspath(true).outputDirectory(folderFactory.newFolder()).buildModel();
-		singleThreadCounter.set(singleThreadCounter.get() - atomicCounter.get(0));
-		assertTrue(singleThreadCounter.get() == 0);
+
+		assertThat(atomicCounter.get(0), equalTo(singleThreadCounter.get()));
 	}
 
 	@Test
@@ -130,10 +128,10 @@ public class ParallelProcessorTest {
 				singleThreadCounter.incrementAndGet();
 			}
 		}).noClasspath(true).outputDirectory(folderFactory.newFolder()).buildModel();
-		for (int j = 0; j < atomicCounter.length(); j++) {
-			singleThreadCounter.set(singleThreadCounter.get() - atomicCounter.get(j));
-		}
-		assertTrue(singleThreadCounter.get() == 0);
+
+		int sequentialCount = singleThreadCounter.get();
+		int parallelCount = IntStream.range(0, atomicCounter.length()).map(atomicCounter::get).sum();
+		assertThat(parallelCount, equalTo(sequentialCount));
 	}
 
 	@Test
@@ -142,10 +140,11 @@ public class ParallelProcessorTest {
 		// given number. Result must be correct too.
 		// Here the iterable<Processor> has size 4 and only 3 are used.
 		AtomicReferenceArray<Integer> atomicCounter = createCounter();
+		int expectedUnusedCounterIdx = atomicCounter.length() - 1;
 		Processor<CtElement> p1 = createProcessor(atomicCounter, 0);
 		Processor<CtElement> p2 = createProcessor(atomicCounter, 1);
 		Processor<CtElement> p3 = createProcessor(atomicCounter, 2);
-		Processor<CtElement> p4 = createProcessor(atomicCounter, 3);
+		Processor<CtElement> p4 = createProcessor(atomicCounter, expectedUnusedCounterIdx);
 
 		new FluentLauncher().inputResource(INPUT_FILES)
 				.processor(new AbstractParallelProcessor<CtElement>(Arrays.asList(p1, p2, p3, p4), 3) {
@@ -160,12 +159,12 @@ public class ParallelProcessorTest {
 				singleThreadCounter.incrementAndGet();
 			}
 		}).noClasspath(true).outputDirectory(folderFactory.newFolder()).buildModel();
-		for (int j = 0; j < atomicCounter.length(); j++) {
-			singleThreadCounter.set(singleThreadCounter.get() - atomicCounter.get(j));
-		}
-		assertTrue(singleThreadCounter.get() == 0);
-		// because only 3 are used
-		assertTrue(atomicCounter.get(3) == 0);
+
+
+		int sequentialCount = singleThreadCounter.get();
+		int parallelCount = IntStream.range(0, atomicCounter.length()).map(atomicCounter::get).sum();
+		assertThat(parallelCount, equalTo(sequentialCount));
+		assertThat(atomicCounter.get(expectedUnusedCounterIdx), equalTo(0));
 	}
 
 	@Test
@@ -230,4 +229,50 @@ public class ParallelProcessorTest {
 				.outputDirectory(folderFactory.newFolder())
 				.buildModel());
 	}
+
+	@Test
+	public void testRaceConditionOnProcessorTermination() throws IOException {
+		// contract: All processors should be allowed to terminate before terminating the executor
+		// service and exiting. Initial implementation had a race condition, see #3806
+
+		long sleepTimeMs = 200;
+		AtomicReferenceArray<Integer> counters = createCounter();
+		Processor<CtElement> p1 = createSlowIncrementingProcessor(counters, 0, sleepTimeMs);
+		Processor<CtElement> p2 = createSlowIncrementingProcessor(counters, 1, sleepTimeMs);
+		Processor<CtElement> p3 = createSlowIncrementingProcessor(counters, 2, sleepTimeMs);
+		Processor<CtElement> p4 = createSlowIncrementingProcessor(counters, 3, sleepTimeMs);
+
+		String input = "./src/test/resources/TypeMemberComments.java";
+		new FluentLauncher().inputResource(input)
+				.processor(new AbstractParallelProcessor<CtElement>(Arrays.asList(p1, p2, p3, p4)) {})
+				.buildModel();
+
+		AtomicInteger singleThreadCounter = new AtomicInteger(0);
+		new FluentLauncher().inputResource(input).processor(new AbstractProcessor<CtElement>() {
+			@Override
+			public void process(CtElement element) {
+				singleThreadCounter.incrementAndGet();
+			}
+		}).buildModel();
+
+		int sequentialCount = singleThreadCounter.get();
+		int parallelCount = IntStream.range(0, counters.length()).map(counters::get).sum();
+		assertThat(parallelCount, equalTo(sequentialCount));
+	}
+
+	private static Processor<CtElement> createSlowIncrementingProcessor(
+			AtomicReferenceArray<Integer> counters, int idx, long sleepTimeMs) {
+		return new AbstractProcessor<CtElement>() {
+			@Override
+			public void process(CtElement element) {
+				try {
+					Thread.sleep(sleepTimeMs);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+				counters.getAndUpdate(idx, i -> i + 1);
+			}
+		};
+	}
+
 }
